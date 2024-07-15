@@ -10,6 +10,8 @@ import hashlib
 import torch
 import matplotlib.pyplot as plt
 
+from transformers import pipeline
+
 synset_to_label = {
     '02691156': 'airplane', '02773838': 'bag', '02801938': 'basket',
     '02808440': 'bathtub', '02818832': 'bed', '02828884': 'bench',
@@ -50,7 +52,7 @@ def _convert_categories(categories):
 
 class ShapeNet_Multiview_Points(Dataset):
     def __init__(self, root_pc:str, root_views: str, cache: str, categories: list = ['chair'], split: str= 'val',
-                 npoints=2048, sv_samples=800, all_points_mean=None, all_points_std=None, get_image=False):
+                 npoints=2048, sv_samples=800, all_points_mean=None, all_points_std=None, get_image=False, mode = None):
         self.root = Path(root_views)
         self.split = split
         self.get_image = get_image
@@ -109,17 +111,22 @@ class ShapeNet_Multiview_Points(Dataset):
                 for i, cp in enumerate(cams_pths):
                     cp = str(cp)
                     vp = cp.split('cam_params')[0] + 'depth.png'
+                    rgbp = cp.split('cam_params')[0] + 'rgb.png'
                     depth_minmax_pth = cp.split('_cam_params')[0] + '.npy'
                     cache_pth = str(self.cache_dir / mid.split('/')[-1] / os.path.basename(depth_minmax_pth) )
 
                     cam_params = np.load(cp)
                     extr = cam_params['extr']
                     intr = cam_params['intr']
-
-                    self.transform = DepthToSingleViewPoints(cam_ext=extr, cam_int=intr)
+                    if mode == "rgbd":
+                        self.transform = RGBDepthToSingleViewPoints(cam_ext=extr, cam_int=intr)
+                    elif mode == "rgb":
+                        self.transform = RGBOnlyDepthToSingleViewPoints(cam_ext=extr, cam_int=intr) 
+                    else : 
+                        self.transform = DepthToSingleViewPoints(cam_ext=extr, cam_int=intr)
 
                     try:
-                        sv_point_cloud = self._render(cache_pth, vp, depth_minmax_pth)
+                        sv_point_cloud= self._render(cache_pth, vp, depth_minmax_pth, rgbp)
 
                         img_path_group.append(vp)
 
@@ -203,7 +210,7 @@ class ShapeNet_Multiview_Points(Dataset):
 
 
 
-    def _render(self, cache_path, depth_pth, depth_minmax_pth):
+    def _render(self, cache_path, depth_pth, depth_minmax_pth, rgb_pth):
         # if not os.path.exists(cache_path.split('.npy')[0] + '_color.png') and os.path.exists(cache_path):
         #
         #     os.remove(cache_path)
@@ -212,7 +219,7 @@ class ShapeNet_Multiview_Points(Dataset):
             data = np.load(cache_path)
         else:
 
-            data, depth = self.transform(depth_pth, depth_minmax_pth)
+            data, depth = self.transform(depth_pth, depth_minmax_pth, rgb_pth)
             assert data.shape[0] > 600, 'Only {} points found'.format(data.shape[0])
             data = data[np.random.choice(data.shape[0], 600, replace=False)]
             np.save(cache_path, data)
@@ -255,3 +262,83 @@ class DepthToSingleViewPoints(object):
     def __repr__(self):
         return 'MeshToMaskedVoxel_'+str(self.radius)+str(self.resolution)+str(self.elev )+str(self.azim)+str(self.img_size )
 
+class RGBDepthToSingleViewPoints(object):
+    '''
+    render a view then save mask
+    '''
+    def __init__(self, cam_ext, cam_int):
+
+        self.cam_ext = cam_ext.reshape(4,4)
+        self.cam_int = cam_int.reshape(3,3)
+
+
+    def __call__(self, depth_pth, depth_minmax_pth, rgb_pth):
+
+        depth_minmax = np.load(depth_minmax_pth)
+        depth_img = plt.imread(depth_pth)[...,0]
+        rgb_img = plt.imread(rgb_pth)
+        mask = np.where(depth_img == 0, -1.0, 1.0)
+        depth_img = 1 - depth_img
+        depth_img = (depth_img * (np.max(depth_minmax) - np.min(depth_minmax)) + np.min(depth_minmax)) * mask
+
+        intr = o3d.camera.PinholeCameraIntrinsic(depth_img.shape[0], depth_img.shape[1],
+                                                 self.cam_int[0, 0], self.cam_int[1, 1], self.cam_int[0,2],
+                                                 self.cam_int[1,2])
+
+        depth_im = o3d.geometry.Image(depth_img.astype(np.float32, copy=False))
+
+        color_im = o3d.geometry.Image(rgb_img.astype(np.float32, copy = False))
+        rgbd_im = o3d.geometry.RGBDImage.create_from_color_and_depth(color_im, depth_im)
+        pcrgbd = o3d.geometry.PointCloud.create_from_rgbd_image(rgbd_im, intr)
+        pc = np.asarray(pcrgbd.points)
+        #pcd = o3d.geometry.PointCloud.create_from_depth_image(depth_im, intr, self.cam_ext, depth_scale=1.)
+        #pc =  np.asarray(pcd.points)
+
+        return pc, depth_img
+
+    def __repr__(self):
+        return 'MeshToMaskedVoxel_'+str(self.radius)+str(self.resolution)+str(self.elev )+str(self.azim)+str(self.img_size )
+
+
+class RGBOnlyDepthToSingleViewPoints(object):
+    '''
+    render a view then save mask
+    '''
+    depth_estimator = pipeline("depth-estimation", model="vinvino02/glpn-nyu", device=0)
+    def __init__(self, cam_ext, cam_int):
+
+        self.cam_ext = cam_ext.reshape(4,4)
+        self.cam_int = cam_int.reshape(3,3)
+        
+
+
+    def __call__(self, depth_pth, depth_minmax_pth, rgb_pth):
+        #setup the image
+        #rgb_img = plt.imread(rgb_pth)
+        depth_img = self.depth_estimator(rgb_pth)['depth']
+        depth_img = plt.imread(depth_pth)[...,0]
+        #depth_minmax = np.load(depth_minmax_pth)
+        #depth_img = depth_img.numpy()
+        depth_max = np.max(depth_img)
+        depth_min = np.min(depth_img)
+        mask = np.where(depth_img == 0, -1.0, 1.0)
+        depth_img = 1 - depth_img
+        depth_img = (depth_img * (depth_max - depth_min) + depth_min) * mask
+
+        intr = o3d.camera.PinholeCameraIntrinsic(depth_img.shape[0], depth_img.shape[1],
+                                                 self.cam_int[0, 0], self.cam_int[1, 1], self.cam_int[0,2],
+                                                 self.cam_int[1,2])
+
+        depth_im = o3d.geometry.Image(depth_img.astype(np.float32, copy=False))
+
+        #color_im = o3d.geometry.Image(rgb_img.astype(np.float32, copy = False))
+        #rgbd_im = o3d.geometry.RGBDImage.create_from_color_and_depth(color_im, depth_im)
+        #pcrgbd = o3d.geometry.PointCloud.create_from_rgbd_image(rgbd_im, intr)
+        #pc = np.asarray(pcrgbd.points)
+        pcd = o3d.geometry.PointCloud.create_from_depth_image(depth_im, intr, self.cam_ext, depth_scale=1.)
+        pc =  np.asarray(pcd.points)
+
+        return pc, depth_img
+
+    def __repr__(self):
+        return 'MeshToMaskedVoxel_'+str(self.radius)+str(self.resolution)+str(self.elev )+str(self.azim)+str(self.img_size )
