@@ -178,7 +178,7 @@ def visualize_pointcloud(points, normals=None,
     plt.close(fig)
 
 
-def visualize_pointcloud_batch(path, pointclouds, pred_labels, labels, categories, vis_label=False, target=None,  elev=30, azim=225):
+def visualize_pointcloud_batch(path, pointclouds, pred_labels, labels, categories, descriptions = [], vis_text = False, vis_label=False, target=None,  elev=30, azim=225):
     batch_size = len(pointclouds)
     fig = plt.figure(figsize=(20,20))
 
@@ -199,8 +199,11 @@ def visualize_pointcloud_batch(path, pointclouds, pred_labels, labels, categorie
         ax.scatter(pc[:, 0], pc[:, 2], pc[:, 1], c=colour, s=5)
         ax.view_init(elev=elev, azim=azim)
         ax.axis('off')
+        if vis_text:
+            ax.set_title(descriptions[idx][:30])
         if vis_label:
             ax.set_title('GT: {0}\nPred: {1}'.format(label, pred))
+            
 
     plt.savefig(path)
     plt.close(fig)

@@ -7,6 +7,7 @@ import random
 import open3d as o3d
 import numpy as np
 import torch.nn.functional as F
+import pandas as pd
 
 # taken from https://github.com/optas/latent_3d_points/blob/8e8f29f8124ed5fc59439e8551ba7ef7567c9a37/src/in_out.py
 synsetid_to_cate = {
@@ -42,7 +43,7 @@ class Uniform15KPC(Dataset):
                  random_subsample=False,
                  normalize_std_per_axis=False,
                  all_points_mean=None, all_points_std=None,
-                 input_dim=3, use_mask=False):
+                 input_dim=3, use_mask=False, use_text = False):
         self.root_dir = root_dir
         self.split = split
         self.in_tr_sample_size = tr_sample_size
@@ -59,8 +60,13 @@ class Uniform15KPC(Dataset):
         self.all_cate_mids = []
         self.cate_idx_lst = []
         self.all_points = []
+        self.all_descriptions = []
         for cate_idx, subd in enumerate(self.subdirs):
             # NOTE: [subd] here is synset id
+            
+            if use_text:
+                labels_csv = pd.read_csv(os.path.join(root_dir, subd, "metadata.tsv"), sep='\t')
+            #print(labels_csv.head(10))
             sub_path = os.path.join(root_dir, subd, self.split)
             if not os.path.isdir(sub_path):
                 print("Directory missing : %s" % sub_path)
@@ -70,6 +76,7 @@ class Uniform15KPC(Dataset):
             for x in os.listdir(sub_path):
                 if not x.endswith('.npy'):
                     continue
+                
                 all_mids.append(os.path.join(self.split, x[:-len('.npy')]))
 
             # NOTE: [mid] contains the split: i.e. "train/<mid>" or "val/<mid>" or "test/<mid>"
@@ -77,15 +84,35 @@ class Uniform15KPC(Dataset):
                 # obj_fname = os.path.join(sub_path, x)
                 obj_fname = os.path.join(root_dir, subd, mid + ".npy")
                 try:
-                    point_cloud = np.load(obj_fname)  # (15k, 3)
-
+                    point_cloud = np.load(obj_fname)
+                    if point_cloud.shape[0] == 2048:
+                        continue
+                    # (15k, 3)
                 except:
                     continue
-
-                assert point_cloud.shape[0] == 15000
+                if use_text : 
+                    #print(mid+".npy")
+                    #description = labels_csv.loc[labels_csv["file"] == (mid+".npy").split('/')[1]]["description"].iloc[0]
+                    #print(mid.split('/')[1])
+                    row = labels_csv.loc[labels_csv["file"] == str(mid.split('/')[1])]
+                    description = ""
+                    if row["tags"].values.size != 0:
+                        description += str(row["tags"].iloc[0])+" "
+                    if row["name"].values.size != 0:
+                        description += str(row["name"].iloc[0])+" "
+                    if row["description"].values.size != 0:
+                        description += str(row["description"].iloc[0])
+                    #print(description)
+                    
+                    
+                #print("shape del point cloud che ho loadato", point_cloud.shape)
+                assert point_cloud.shape[0] >= 2048
+                
                 self.all_points.append(point_cloud[np.newaxis, ...])
                 self.cate_idx_lst.append(cate_idx)
                 self.all_cate_mids.append((subd, mid))
+                if use_text:
+                    self.all_descriptions.append(description)
 
         # Shuffle the index deterministically (based on the number of examples)
         self.shuffle_idx = list(range(len(self.all_points)))
@@ -93,6 +120,7 @@ class Uniform15KPC(Dataset):
         self.cate_idx_lst = [self.cate_idx_lst[i] for i in self.shuffle_idx]
         self.all_points = [self.all_points[i] for i in self.shuffle_idx]
         self.all_cate_mids = [self.all_cate_mids[i] for i in self.shuffle_idx]
+        self.all_descriptions = [self.all_descriptions[i] for i in self.shuffle_idx] if len(self.all_descriptions) > 0 else None 
 
         # Normalization
         self.all_points = np.concatenate(self.all_points)  # (N, 15000, 3)
@@ -124,11 +152,11 @@ class Uniform15KPC(Dataset):
         self.all_points = (self.all_points - self.all_points_mean) / self.all_points_std
         if self.box_per_shape:
             self.all_points = self.all_points - 0.5
-        self.train_points = self.all_points[:, :10000]
-        self.test_points = self.all_points[:, 10000:]
+        self.train_points = self.all_points[:, :int(0.85*point_cloud.shape[0])]
+        self.test_points = self.all_points[:, int(0.85*point_cloud.shape[0]):]
 
-        self.tr_sample_size = min(10000, tr_sample_size)
-        self.te_sample_size = min(5000, te_sample_size)
+        self.tr_sample_size = min(int(0.85*point_cloud.shape[0]), tr_sample_size)
+        self.te_sample_size = min(point_cloud.shape[0] - int(0.85*point_cloud.shape[0]), te_sample_size)
         print("Total number of data:%d" % len(self.train_points))
         print("Min number of points: (train)%d (test)%d"
               % (self.tr_sample_size, self.te_sample_size))
@@ -148,8 +176,8 @@ class Uniform15KPC(Dataset):
         self.all_points_mean = mean
         self.all_points_std = std
         self.all_points = (self.all_points - self.all_points_mean) / self.all_points_std
-        self.train_points = self.all_points[:, :10000]
-        self.test_points = self.all_points[:, 10000:]
+        self.train_points = self.all_points[:, :int(0.85*self.all_points[0].shape[0])]
+        self.test_points = self.all_points[:, int(0.85*self.all_points[0].shape[0]):]
 
     def __len__(self):
         return len(self.train_points)
@@ -178,7 +206,8 @@ class Uniform15KPC(Dataset):
             'train_points': tr_out,
             'test_points': te_out,
             'mean': m, 'std': s, 'cate_idx': cate_idx,
-            'sid': sid, 'mid': mid
+            'sid': sid, 'mid': mid,
+            'description' : self.all_descriptions[idx] if self.all_descriptions is not None else None
         }
 
         if self.use_mask:
@@ -205,7 +234,7 @@ class ShapeNet15kPointClouds(Uniform15KPC):
                  normalize_std_per_axis=False, box_per_shape=False,
                  random_subsample=False,
                  all_points_mean=None, all_points_std=None,
-                 use_mask=False):
+                 use_mask=False, use_text = False):
         self.root_dir = root_dir
         self.split = split
         assert self.split in ['train', 'test', 'val']
@@ -230,7 +259,7 @@ class ShapeNet15kPointClouds(Uniform15KPC):
             normalize_std_per_axis=normalize_std_per_axis,
             random_subsample=random_subsample,
             all_points_mean=all_points_mean, all_points_std=all_points_std,
-            input_dim=3, use_mask=use_mask)
+            input_dim=3, use_mask=use_mask, use_text=use_text)
 
 
 
