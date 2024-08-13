@@ -1,0 +1,2 @@
+#python train_generation_text.py --saveIter 100 --dataroot /cluster/52/pietro.caforio/project/airplane6144 --category airplane --model output/train_generation_text/2024-07-18-22-52-43/epoch_1099.pth  
+python train_part_edit_text.py --saveIter 100 --dataroot /cluster/52/pietro.caforio/project/filtered_chair_big/filtered_chair --category chair --model output/train_generation_text/2024-08-08-23-13-19/epoch_1799.pth --vizIter 1 --saveIter 100

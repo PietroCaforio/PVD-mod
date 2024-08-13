@@ -719,6 +719,7 @@ def train(gpu, opt, output_dir, noises_init):
                 mock_description = [description[i % (opt.bs - 1)] for i in range(25)]
                 manual_description = ["chair with clean lines, a sleek metal frame, and a monochromatic color scheme, lightweight, emphasizing functionality and simplicity", "ornate chair with intricate wood carvings, dark plush upholstery, claw feet, and decorative armrests, exuding royal elegance"]
                 
+                
                 x_gen_eval = model.gen_samples(new_x_chain(x, 25).shape, x.device, description = mock_description, clip_denoised=False)
                 x_gen_list = model.gen_sample_traj(new_x_chain(x, 1).shape, x.device, description = [mock_description[0]], freq=40, clip_denoised=False)
                 x_gen_all = torch.cat(x_gen_list, dim=0)
@@ -748,13 +749,13 @@ def train(gpu, opt, output_dir, noises_init):
                                        x_gen_eval.transpose(1, 2), None, None,
                                        None, vis_text = True, descriptions = mock_description)
             export_to_pc_batch('%s/epoch_%03d_samples_eval' % (outf_syn, epoch),
-                                    (x_gen_eval.transpose(1, 2)).numpy())
+                                    (x_gen_eval.transpose(1, 2).detach().cpu()).numpy())
             
             visualize_pointcloud_batch('%s/epoch_%03d_samples_eval_manual.png' % (outf_syn, epoch),
                                        x_gen_manual.transpose(1, 2), None, None,
                                        None, vis_text = True, descriptions = manual_description)
             export_to_pc_batch('%s/epoch_%03d_samples_eval_manual' % (outf_syn, epoch),
-                                    (x_gen_manual.transpose(1, 2)).numpy())
+                                    (x_gen_manual.transpose(1, 2).detach().cpu()).numpy())
             
             visualize_pointcloud_batch('%s/epoch_%03d_samples_eval_all.png' % (outf_syn, epoch),
                                        x_gen_all.transpose(1, 2), None,
