@@ -1,4 +1,11 @@
-# Shape Generation and Completion Through Point-Voxel Diffusion
+# This is a spin-off of the "Shape Generation and Completion Through Point-Voxel Diffusion" paper
+This is a proof of concept with proposed changes to the paper introducing three key modifications: (1) enabling shape
+completion using RGB images instead of depth data, (2) in-
+corporating text-conditional generation, and (3) allowing
+text-conditional part editing. These extensions make PVD
+more versatile and improve its applicability across different
+datasets and user interactions.
+
 <p align="center">
   <img src="assets/pvd_teaser.gif" width="80%"/>
 </p>
