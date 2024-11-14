@@ -1,10 +1,11 @@
 # This is a spin-off of the "Shape Generation and Completion Through Point-Voxel Diffusion" paper
-This is a proof of concept with proposed changes to the paper introducing three key modifications: (1) enabling shape
+This is a project developed during the "Machine Learning for 3D Geometry" course at TUM, it's a proof of concept with proposed changes to the paper introducing three key modifications: (1) enabling shape
 completion using RGB images instead of depth data, (2) in-
 corporating text-conditional generation, and (3) allowing
 text-conditional part editing. These extensions make PVD
 more versatile and improve its applicability across different
 datasets and user interactions.
+### [Final Report link](https://github.com/PietroCaforio/PVD-mod/blob/main/ML_for_3D_Final_Report.pdf)
 
 <p align="center">
   <img src="assets/pvd_teaser.gif" width="80%"/>
