@@ -5,8 +5,12 @@ corporating text-conditional generation, and (3) allowing
 text-conditional part editing. These extensions make PVD
 more versatile and improve its applicability across different
 datasets and user interactions.
-### [Final Report link](https://github.com/PietroCaforio/PVD-mod/blob/main/ML_for_3D_Final_Report.pdf)
+### [link to Final Report](https://github.com/PietroCaforio/PVD-mod/blob/main/ML_for_3D_Final_Report.pdf)
+### [link to Final Presentation](https://docs.google.com/presentation/d/1MOCENtZJp04vdFBD7LQgQ3-ZSMtTAfJdTDHJlHP0Cr4/edit?usp=sharing)
 
+---
+
+## Original repo's readme:
 <p align="center">
   <img src="assets/pvd_teaser.gif" width="80%"/>
 </p>
